@@ -205,6 +205,62 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     return buffer.getvalue()
 
 
+# ==========================================
+# DESPLIEGUE DEL CATÁLOGO DE PRODUCTOS
+# ==========================================
+st.subheader("Catálogo de Productos")
+
+# Diccionario interno temporal para agrupar los artículos antes de enviar
+carrito_solicitudes = {}
+
+for prod in df_productos:
+    col1, col2, col3 = st.columns([1, 2, 1.5])
+    cod_art = str(prod['codigo']).strip()
+    
+    with col1:
+        # Recuperamos la lógica idéntica original que cargaba las fotos perfectamente
+        id_foto = str(prod['id_imagen_drive']).strip()
+        
+        if id_foto and id_foto != "None" and id_foto != "":
+            # El método práctico original que el navegador renderiza sin problemas
+            url_directa_foto = f"https://lh3.googleusercontent.com/d/{id_foto}"
+            st.image(url_directa_foto, width=130)
+        else:
+            st.warning("Sin ID de foto")
+            
+    with col2:
+        # Volvemos a la lectura nativa directa original de las variables de Excel
+        st.markdown(f"### {prod['nombre']}")
+        st.caption(f"Código de Artículo: {cod_art}")
+        
+        # Validación para avisar si el código ya fue guardado en el lote actual
+        if cod_art in st.session_state["codigos_enviados"]:
+            st.success("✅ Este artículo ya fue guardado en Google Sheets")
+            
+    with col3:
+        # Bloqueamos el input si el código ya se procesó para evitar dobles registros
+        ya_enviado = cod_art in st.session_state["codigos_enviados"]
+        
+        cantidad = st.number_input(
+            "Cantidad a pedir:", 
+            min_value=0, 
+            step=1, 
+            key=f"cant_{cod_art}",
+            disabled=ya_enviado
+        )
+        
+        # Estructura limpia para el guardado y generación acumulada del PDF
+        if cantidad > 0 and not ya_enviado:
+            carrito_solicitudes[cod_art] = {
+                "codigo": cod_art,
+                "nombre": prod['nombre'],
+                "cantidad": cantidad,
+                "id_drive": id_foto
+            }
+                
+    st.divider()
+
+
 
 # ==========================================
 # PANEL DE ENVIÓ CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
