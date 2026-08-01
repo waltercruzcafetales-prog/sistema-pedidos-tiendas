@@ -1,9 +1,16 @@
+import sys
+import asyncio
+
+# Forzar a Windows a usar el selector clásico por si haces pruebas locales
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import streamlit as st
 import requests
 from datetime import datetime 
 import io
 
-# Librerías oficiales para la construcción del PDF sin romper la app
+# Librerías oficiales para la construcción precisa del PDF a 2 columnas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -49,7 +56,7 @@ st.title("🛍️ Sistema de Solicitud de Pedidos")
 st.sidebar.header("Identificación")
 usuario_activo = st.sidebar.selectbox("Seleccione su Usuario:", lista_usuarios)
 
-# REQUERIMIENTO 1: El usuario solo puede escoger la tienda que tiene asignada
+# REQUERIMIENTO: El usuario solo puede escoger la tienda que tiene asignada
 lista_tiendas_filtradas = [
     t for t in df_tiendas_completo 
     if str(t.get("usuario", "")).lower() == str(usuario_activo).lower()
@@ -70,13 +77,14 @@ tienda_seleccionada = st.sidebar.selectbox(
 codigo_tienda_activo = tienda_seleccionada.get('codigo_tienda', '')
 nombre_tienda_activo = tienda_seleccionada.get('tienda', '')
 
-# REQUERIMIENTO 2: Forzar cantidades a 0 en pantalla al cambiar de tienda o usuario
+# REQUERIMIENTO: Forzar cantidades a 0 en pantalla al cambiar de tienda o usuario
 llave_limpieza = f"tienda_{usuario_activo}_{codigo_tienda_activo}"
 if "tienda_actual" not in st.session_state or st.session_state["tienda_actual"] != llave_limpieza:
     st.session_state["tienda_actual"] = llave_limpieza
-    st.session_state["codigos_enviados"] = []  # Evita duplicados bloqueando reenvíos
-    st.session_state["pdf_listo"] = None       # Guarda el PDF de la sesión actual
-    st.session_state["ref_pdf"] = ""           # Guarda la referencia del PDF
+    st.session_state["codigos_enviados"] = []    # Evita duplicados bloqueando reenvíos
+    st.session_state["historial_pdf_items"] = [] # Acumula todos los productos del día para el PDF
+    st.session_state["pdf_listo"] = None         # Guarda el PDF generado de la sesión
+    st.session_state["ref_pdf"] = ""            # Guarda la referencia del PDF
     # Borramos cualquier rastro numérico de sesiones anteriores para obligar al renderizado en 0
     for key in list(st.session_state.keys()):
         if key.startswith("cant_"):
@@ -105,7 +113,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         'CeldaPDF', fontName='Helvetica', fontSize=10, leading=11, alignment=TA_LEFT
     )
     
-    # Título solicitado con nombre de tienda, fecha e id único
+    # Título solicitado con nombre de tienda, fecha e id único simplificado
     story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
     story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
     
@@ -130,7 +138,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
         if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
             try:
-                img_res = requests.get(f"https://lh3.googleusercontent.com/d/{id_foto_izq}", timeout=5)
+                img_res = requests.get(f"https://googleusercontent.com{id_foto_izq}", timeout=5)
                 if img_res.status_code == 200:
                     p_img_izq = RLImage(io.BytesIO(img_res.content), width=40, height=40)
             except Exception:
@@ -146,7 +154,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
             p_img_der = Paragraph("❌ Sin foto", estilo_celda)
             if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
                 try:
-                    img_res = requests.get(f"https://lh3.googleusercontent.com/d/{id_foto_der}", timeout=5)
+                    img_res = requests.get(f"https://googleusercontent.com{id_foto_der}", timeout=5)
                     if img_res.status_code == 200:
                         p_img_der = RLImage(io.BytesIO(img_res.content), width=40, height=40)
                 except Exception:
@@ -158,7 +166,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         tabla_datos.append(fila_bloque)
         
     # Ancho total asignado equilibrado: [Foto, Texto, Foto, Texto]
-    anchos_columnas = [50, 220, 50, 220]
+    anchos_columnas = [45, 225, 45, 225]
     tabla_catalogo = Table(tabla_datos, colWidths=anchos_columnas)
     tabla_catalogo.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -176,7 +184,8 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         [Paragraph("_____________________________<br/>Firma de Despacho", estilo_firma), 
          Paragraph("_____________________________<br/>Firma de Recepción", estilo_firma)]
     ]
-    tabla_firma = Table(datos_firma, colWidths=[270, 270])
+    anchos_firmas = [270, 270]
+    tabla_firma = Table(datos_firma, colWidths=anchos_firmas)
     tabla_firma.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER')
@@ -204,7 +213,7 @@ for prod in df_productos:
         
         # MANTENIDO: Lógica idéntica de visualización que sí te cargó las fotos
         if id_foto and id_foto not in ["", "0", "0.0", "None", "Sin Foto"]:
-            url_directa_foto = f"https://lh3.googleusercontent.com/d/{id_foto}"
+            url_directa_foto = f"https://googleusercontent.com{id_foto}"
             st.image(url_directa_foto, width=130)
         else:
             st.warning("Sin ID de foto")
@@ -223,14 +232,26 @@ for prod in df_productos:
         
         # El input arranca estrictamente en 0 y guarda la persistencia de forma segura
         cantidad = st.number_input(
-            "Cantidad a pedir:", 
-            min_value=0, 
-            step=1, 
+            "Cantidad a pedir:",
+            min_value=0,
+            step=1,
             key=f"cant_{cod_art}",
             disabled=ya_enviado
         )
+        
+        # Solo se indexa si tiene valor y no fue previamente guardado
+        if cantidad > 0 and not ya_enviado:
+            carrito_solicitudes[cod_art] = {
+                "codigo": cod_art,
+                "nombre": prod.get('nombre', 'Producto Sin Nombre'),
+                "cantidad": cantidad,
+                "id_drive": id_foto
+            }
+                
+    st.divider()
+
 # ==========================================
-# PANEL DE ENVÍO CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
+# PANEL DE ENVIÓ CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
 # ==========================================
 st.sidebar.markdown("---")
 st.sidebar.subheader("Confirmación de Solicitud")
@@ -238,16 +259,14 @@ st.sidebar.subheader("Confirmación de Solicitud")
 if carrito_solicitudes:
     st.sidebar.write(f"Artículos seleccionados: **{len(carrito_solicitudes)}**")
     
-    # Botón de envío global que genera una referencia para modificar/eliminar
+    # REQUERIMIENTO: Botón de envío global que genera una referencia simplificada por fecha para modificar/eliminar
     if st.sidebar.button("🚀 Enviar Pedido Completo", use_container_width=True):
         ahora = datetime.now()
         fecha_actual = ahora.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Estructura del ID único: PED-AñoMesDia-HoraMinutoSegundo-Tienda-Usuario
-        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d-%H%M%S')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
-        
+        # Estructura del ID único optimizada: solo AñoMesDía (sin hora) para agrupar reportes del día
+        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
         exito_operacion = True
-        lista_pdf_items = []
         
         for codigo_item, info_item in carrito_solicitudes.items():
             datos_pedido = {
@@ -265,18 +284,28 @@ if carrito_solicitudes:
                 if res.status_code == 200:
                     # Marcamos como enviado el código para bloquear duplicados
                     st.session_state["codigos_enviados"].append(str(codigo_item))
-                    lista_pdf_items.append(info_item)
+                    
+                    # REQUERIMIENTO: Consolidamos el artículo en el historial acumulativo del PDF diario
+                    existe_en_historial = False
+                    for item_pdf in st.session_state["historial_pdf_items"]:
+                        if item_pdf["codigo"] == info_item["codigo"]:
+                            item_pdf["cantidad"] += info_item["cantidad"]
+                            existe_en_historial = True
+                            break
+                            
+                    if not existe_en_historial:
+                        st.session_state["historial_pdf_items"].append(info_item)
                 else:
                     exito_operacion = False
             except Exception:
                 exito_operacion = False
                 
-        if exito_operacion and lista_pdf_items:
+        if exito_operacion and st.session_state["historial_pdf_items"]:
             st.sidebar.success("🎉 ¡Pedido guardado exitosamente!")
             st.balloons() # Animación corregida en plural
             
-            # Construcción e inyección automática del PDF en memoria
-            pdf_data = generar_pdf_pedidos(id_pedido_referencia, fecha_actual, nombre_tienda_activo, lista_pdf_items)
+            # Construcción e inyección automática del PDF acumulativo completo en memoria
+            pdf_data = generar_pdf_pedidos(id_pedido_referencia, fecha_actual, nombre_tienda_activo, st.session_state["historial_pdf_items"])
             st.session_state["pdf_listo"] = pdf_data
             st.session_state["ref_pdf"] = id_pedido_referencia
             
@@ -288,11 +317,12 @@ else:
     if not st.session_state["codigos_enviados"]:
         st.sidebar.caption("Modifica cantidades en el catálogo para procesar un pedido.")
 
-# Renderizado automático del botón de descarga del PDF si ya se generó el lote
+# Renderizado automático del botón de descarga del PDF si ya se generó el lote acumulado
 if st.session_state["pdf_listo"] is not None:
     st.sidebar.markdown("---")
     st.sidebar.subheader("📄 Documentación Generada")
     st.sidebar.info(f"Ref: {st.session_state['ref_pdf']}")
+    st.sidebar.write(f"Total productos en reporte: **{len(st.session_state['historial_pdf_items'])}**")
     
     st.sidebar.download_button(
         label="📥 Descargar Reporte PDF",
