@@ -94,7 +94,7 @@ st.write(f"Sesión activa: **{usuario_activo}** | Tienda: **[{codigo_tienda_acti
 st.divider()
 
 # ==========================================
-# FUNCIÓN GENERADORA DEL REPORTE PDF (CORREGIDA PARA LAS FOTOS)
+# FUNCIÓN GENERADORA DEL REPORTE PDF (SOLUCIÓN DEFINITIVA DE FOTOS)
 # ==========================================
 def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     buffer = io.BytesIO()
@@ -118,8 +118,9 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
     story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
     
-    # Importamos el componente nativo de imágenes de ReportLab de forma local
+    # Importamos las herramientas nativas de procesamiento local de ReportLab y red
     from reportlab.platypus import Image as RLImage
+    import urllib.request
     
     # Convertimos la lista plana de artículos seleccionados en pares para simular 2 columnas
     pares_productos = []
@@ -140,9 +141,12 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
         if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
             try:
-                # PASO CLAVE: Pasamos la URL directa estable al componente nativo de ReportLab
-                url_pdf_izq = f"https://googleusercontent.com{id_foto_izq}"
-                p_img_izq = RLImage(url_pdf_izq, width=40, height=40)
+                url_descarga_izq = f"https://googleusercontent.com{id_foto_izq}"
+                # Creamos una petición simulando un navegador web para saltar bloqueos de Google
+                req = urllib.request.Request(url_descarga_izq, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    img_data_izq = io.BytesIO(response.read())
+                    p_img_izq = RLImage(img_data_izq, width=40, height=40)
             except Exception:
                 pass
         fila_bloque.extend([p_img_izq, p_texto_izq])
@@ -156,9 +160,11 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
             p_img_der = Paragraph("❌ Sin foto", estilo_celda)
             if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
                 try:
-                    # PASO CLAVE: Pasamos la URL directa estable al componente nativo de ReportLab
-                    url_pdf_der = f"https://googleusercontent.com{id_foto_der}"
-                    p_img_der = RLImage(url_pdf_der, width=40, height=40)
+                    url_descarga_der = f"https://googleusercontent.com{id_foto_der}"
+                    req = urllib.request.Request(url_descarga_der, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        img_data_der = io.BytesIO(response.read())
+                        p_img_der = RLImage(img_data_der, width=40, height=40)
                 except Exception:
                     pass
             fila_bloque.extend([p_img_der, p_texto_der])
@@ -168,7 +174,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         tabla_datos.append(fila_bloque)
         
     # Ancho total asignado equilibrado: [Foto, Texto, Foto, Texto]
-    anchos_columnas = [50, 220, 50, 220]
+    anchos_columnas = [45, 225, 45, 225]
     tabla_catalogo = Table(tabla_datos, colWidths=anchos_columnas)
     tabla_catalogo.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -197,61 +203,6 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
-# ==========================================
-# DESPLIEGUE DEL CATÁLOGO DE PRODUCTOS
-# ==========================================
-st.subheader("Catálogo de Productos")
-
-# Diccionario interno temporal para agrupar los artículos antes de enviar
-carrito_solicitudes = {}
-
-for prod in df_productos:
-    col1, col2, col3 = st.columns([1, 2, 1.5])
-    cod_art = str(prod['codigo']).strip()
-    
-    with col1:
-        # Recuperamos la lógica idéntica original que cargaba las fotos perfectamente
-        id_foto = str(prod['id_imagen_drive']).strip()
-        
-        if id_foto and id_foto != "None" and id_foto != "":
-            # El método práctico original que el navegador renderiza sin problemas
-            url_directa_foto = f"https://lh3.googleusercontent.com/d/{id_foto}"
-            st.image(url_directa_foto, width=130)
-        else:
-            st.warning("Sin ID de foto")
-            
-    with col2:
-        # Volvemos a la lectura nativa directa original de las variables de Excel
-        st.markdown(f"### {prod['nombre']}")
-        st.caption(f"Código de Artículo: {cod_art}")
-        
-        # Validación para avisar si el código ya fue guardado en el lote actual
-        if cod_art in st.session_state["codigos_enviados"]:
-            st.success("✅ Este artículo ya fue guardado en Google Sheets")
-            
-    with col3:
-        # Bloqueamos el input si el código ya se procesó para evitar dobles registros
-        ya_enviado = cod_art in st.session_state["codigos_enviados"]
-        
-        cantidad = st.number_input(
-            "Cantidad a pedir:", 
-            min_value=0, 
-            step=1, 
-            key=f"cant_{cod_art}",
-            disabled=ya_enviado
-        )
-        
-        # Estructura limpia para el guardado y generación acumulada del PDF
-        if cantidad > 0 and not ya_enviado:
-            carrito_solicitudes[cod_art] = {
-                "codigo": cod_art,
-                "nombre": prod['nombre'],
-                "cantidad": cantidad,
-                "id_drive": id_foto
-            }
-                
-    st.divider()
 
 
 
