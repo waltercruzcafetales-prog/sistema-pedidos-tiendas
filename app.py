@@ -94,7 +94,7 @@ st.write(f"Sesión activa: **{usuario_activo}** | Tienda: **[{codigo_tienda_acti
 st.divider()
 
 # ==========================================
-# FUNCIÓN GENERADORA DEL REPORTE PDF (SOLUCIÓN DEFINITIVA DE FOTOS)
+# FUNCIÓN GENERADORA DEL REPORTE PDF (SOLUCIÓN DEFINITIVA DE IMÁGENES)
 # ==========================================
 def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     buffer = io.BytesIO()
@@ -118,9 +118,8 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
     story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
     
-    # Importamos las herramientas nativas de procesamiento local de ReportLab y red
+    # Importamos el componente nativo de imágenes de ReportLab
     from reportlab.platypus import Image as RLImage
-    import urllib.request
     
     # Convertimos la lista plana de artículos seleccionados en pares para simular 2 columnas
     pares_productos = []
@@ -138,15 +137,14 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         texto_izq = f"<b>Código:</b> {izq['codigo']}<br/><b>Nombre:</b> {izq['nombre']}<br/><b>Cant:</b> {izq['cantidad']}"
         p_texto_izq = Paragraph(texto_izq, estilo_celda)
         
-        p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
+        p_img_izq = Paragraph("■ Sin<br/>foto", estilo_celda)
         if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
             try:
-                url_descarga_izq = f"https://googleusercontent.com{id_foto_izq}"
-                # Creamos una petición simulando un navegador web para saltar bloqueos de Google
-                req = urllib.request.Request(url_descarga_izq, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    img_data_izq = io.BytesIO(response.read())
-                    p_img_izq = RLImage(img_data_izq, width=40, height=40)
+                # Descargamos los bytes de la foto usando requests (el mismo método que la web)
+                url_izq = f"https://googleusercontent.com{id_foto_izq}"
+                res_izq = requests.get(url_izq, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                if res_izq.status_code == 200:
+                    p_img_izq = RLImage(io.BytesIO(res_izq.content), width=40, height=40)
             except Exception:
                 pass
         fila_bloque.extend([p_img_izq, p_texto_izq])
@@ -157,14 +155,13 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
             texto_der = f"<b>Código:</b> {der['codigo']}<br/><b>Nombre:</b> {der['nombre']}<br/><b>Cant:</b> {der['cantidad']}"
             p_texto_der = Paragraph(texto_der, estilo_celda)
             
-            p_img_der = Paragraph("❌ Sin foto", estilo_celda)
+            p_img_der = Paragraph("■ Sin<br/>foto", estilo_celda)
             if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
                 try:
-                    url_descarga_der = f"https://googleusercontent.com{id_foto_der}"
-                    req = urllib.request.Request(url_descarga_der, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        img_data_der = io.BytesIO(response.read())
-                        p_img_der = RLImage(img_data_der, width=40, height=40)
+                    url_der = f"https://googleusercontent.com{id_foto_der}"
+                    res_der = requests.get(url_der, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                    if res_der.status_code == 200:
+                        p_img_der = RLImage(io.BytesIO(res_der.content), width=40, height=40)
                 except Exception:
                     pass
             fila_bloque.extend([p_img_der, p_texto_der])
