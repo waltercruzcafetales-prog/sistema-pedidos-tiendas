@@ -1,6 +1,14 @@
 import streamlit as st
 import requests
 from datetime import datetime 
+import io
+
+# Librerías oficiales para la construcción del PDF sin romper la app
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # Configuración inicial de la interfaz (Tu base estable)
 st.set_page_config(page_title="Sistema de Pedidos", page_icon="🛍️", layout="wide")
@@ -66,6 +74,9 @@ nombre_tienda_activo = tienda_seleccionada.get('tienda', '')
 llave_limpieza = f"tienda_{usuario_activo}_{codigo_tienda_activo}"
 if "tienda_actual" not in st.session_state or st.session_state["tienda_actual"] != llave_limpieza:
     st.session_state["tienda_actual"] = llave_limpieza
+    st.session_state["codigos_enviados"] = []  # Evita duplicados bloqueando reenvíos
+    st.session_state["pdf_listo"] = None       # Guarda el PDF de la sesión actual
+    st.session_state["ref_pdf"] = ""           # Guarda la referencia del PDF
     # Borramos cualquier rastro numérico de sesiones anteriores para obligar al renderizado en 0
     for key in list(st.session_state.keys()):
         if key.startswith("cant_"):
@@ -74,6 +85,111 @@ if "tienda_actual" not in st.session_state or st.session_state["tienda_actual"] 
 st.write(f"Sesión activa: **{usuario_activo}** | Tienda: **[{codigo_tienda_activo}] {nombre_tienda_activo}**")
 st.divider()
 
+# ==========================================
+# FUNCIÓN GENERADORA DEL REPORTE PDF (Arial/Helvetica 10 - 2 Columnas)
+# ==========================================
+def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    
+    estilo_titulo = ParagraphStyle(
+        'TituloPDF', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=TA_CENTER, spaceAfter=6
+    )
+    estilo_meta = ParagraphStyle(
+        'MetaPDF', fontName='Helvetica', fontSize=10, leading=12, alignment=TA_CENTER, spaceAfter=15
+    )
+    estilo_celda = ParagraphStyle(
+        'CeldaPDF', fontName='Helvetica', fontSize=10, leading=11, alignment=TA_LEFT
+    )
+    
+    # Título solicitado con nombre de tienda, fecha e id único
+    story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
+    story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
+    
+    from reportlab.platypus import Image as RLImage
+    
+    # Conversión de lista a pares para 2 columnas (máximo 15 filas por columna = 30 productos por página)
+    pares_productos = []
+    for i in range(0, len(lista_items), 2):
+        item_izq = lista_items[i]
+        item_der = lista_items[i+1] if (i+1) < len(lista_items) else None
+        pares_productos.append((item_izq, item_der))
+    
+    tabla_datos = []
+    for izq, der in pares_productos:
+        fila_bloque = []
+        
+        # Columna de la Izquierda
+        id_foto_izq = str(izq.get('id_drive', '')).strip()
+        texto_izq = f"<b>Código:</b> {izq['codigo']}<br/><b>Nombre:</b> {izq['nombre']}<br/><b>Cant:</b> {izq['cantidad']}"
+        p_texto_izq = Paragraph(texto_izq, estilo_celda)
+        
+        p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
+        if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
+            try:
+                img_res = requests.get(f"https://lh3.googleusercontent.com/d/{id_foto_izq}", timeout=5)
+                if img_res.status_code == 200:
+                    p_img_izq = RLImage(io.BytesIO(img_res.content), width=40, height=40)
+            except Exception:
+                pass
+        fila_bloque.extend([p_img_izq, p_texto_izq])
+        
+        # Columna de la Derecha
+        if der:
+            id_foto_der = str(der.get('id_drive', '')).strip()
+            texto_der = f"<b>Código:</b> {der['codigo']}<br/><b>Nombre:</b> {der['nombre']}<br/><b>Cant:</b> {der['cantidad']}"
+            p_texto_der = Paragraph(texto_der, estilo_celda)
+            
+            p_img_der = Paragraph("❌ Sin foto", estilo_celda)
+            if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
+                try:
+                    img_res = requests.get(f"https://lh3.googleusercontent.com/d/{id_foto_der}", timeout=5)
+                    if img_res.status_code == 200:
+                        p_img_der = RLImage(io.BytesIO(img_res.content), width=40, height=40)
+                except Exception:
+                    pass
+            fila_bloque.extend([p_img_der, p_texto_der])
+        else:
+            fila_bloque.extend(["", ""])
+            
+        tabla_datos.append(fila_bloque)
+        
+    # Ancho total asignado equilibrado: [Foto, Texto, Foto, Texto]
+    anchos_columnas = [50, 220, 50, 220]
+    tabla_catalogo = Table(tabla_datos, colWidths=anchos_columnas)
+    tabla_catalogo.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.whitesmoke)
+    ]))
+    story.append(tabla_catalogo)
+    
+    # Bloque Solicitado de Firma de Recepción
+    story.append(Spacer(1, 40))
+    estilo_firma = ParagraphStyle('FirmaPDF', fontName='Helvetica', fontSize=10, alignment=TA_CENTER)
+    datos_firma = [
+        [Paragraph("_____________________________<br/>Firma de Despacho", estilo_firma), 
+         Paragraph("_____________________________<br/>Firma de Recepción", estilo_firma)]
+    ]
+    tabla_firma = Table(datos_firma, colWidths=[270, 270])
+    tabla_firma.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER')
+    ]))
+    story.append(tabla_firma)
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+# ==========================================
+# DESPLIEGUE DEL CATÁLOGO DE PRODUCTOS
+# ==========================================
 st.subheader("Catálogo de Productos")
 
 # Diccionario interno temporal para agrupar los artículos antes de enviar
@@ -94,25 +210,27 @@ for prod in df_productos:
             st.warning("Sin ID de foto")
             
     with col2:
-        # CORREGIDO: Removido el carácter de texto plano que desalineaba las cajas
         st.markdown(f"### {prod.get('nombre', 'Producto Sin Nombre')}")
         st.caption(f"Código de Artículo: {cod_art}")
         
+        # MENSAJE DE ENVIADO: Bloquea visualmente si ya fue procesado en este lote
+        if str(cod_art) in st.session_state["codigos_enviados"]:
+            st.success("✅ Este artículo ya fue guardado en Google Sheets")
+            
     with col3:
+        # Si ya se envió, deshabilitamos el campo para que no se pueda enviar 2 veces
+        ya_enviado = str(cod_art) in st.session_state["codigos_enviados"]
+        
         # El input arranca estrictamente en 0 y guarda la persistencia de forma segura
         cantidad = st.number_input(
             "Cantidad a pedir:", 
             min_value=0, 
             step=1, 
-            key=f"cant_{cod_art}"
+            key=f"cant_{cod_art}",
+            disabled=ya_enviado
         )
-        if cantidad > 0:
-            carrito_solicitudes[cod_art] = cantidad
-                
-    st.divider()
-
 # ==========================================
-# PANEL DE ENVIÓ CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
+# PANEL DE ENVÍO CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
 # ==========================================
 st.sidebar.markdown("---")
 st.sidebar.subheader("Confirmación de Solicitud")
@@ -120,41 +238,66 @@ st.sidebar.subheader("Confirmación de Solicitud")
 if carrito_solicitudes:
     st.sidebar.write(f"Artículos seleccionados: **{len(carrito_solicitudes)}**")
     
-    # REQUERIMIENTO 3: Botón de envío global que genera una referencia para modificar/eliminar
+    # Botón de envío global que genera una referencia para modificar/eliminar
     if st.sidebar.button("🚀 Enviar Pedido Completo", use_container_width=True):
         ahora = datetime.now()
         fecha_actual = ahora.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Estructura del ID único: PED-AñoMesDia-HoraMinutoSegundo-Tienda-Usuario
-        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d-%H%M%S')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
+               # Estructura del ID único optimizada: solo AñoMesDía (sin hora)
+        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
         
         exito_operacion = True
+        lista_pdf_items = []
         
-        for codigo_item, cantidad_item in carrito_solicitudes.items():
+        for codigo_item, info_item in carrito_solicitudes.items():
             datos_pedido = {
                 "fecha": fecha_actual,
                 # Inyectamos el ID de referencia único junto al código de la tienda
                 "codigo_tienda": f"{id_pedido_referencia} | {codigo_tienda_activo}",
                 "tienda": nombre_tienda_activo,
                 "codigo": codigo_item,
-                "cantidad": cantidad_item,
+                "cantidad": info_item["cantidad"],
                 "usuario": usuario_activo
             }
             
             try:
                 res = requests.post(URL_WEB_APP, json=datos_pedido, timeout=10)
-                if res.status_code != 200:
+                if res.status_code == 200:
+                    # Marcamos como enviado el código para bloquear duplicados
+                    st.session_state["codigos_enviados"].append(str(codigo_item))
+                    lista_pdf_items.append(info_item)
+                else:
                     exito_operacion = False
             except Exception:
                 exito_operacion = False
                 
-        if exito_operacion:
+        if exito_operacion and lista_pdf_items:
             st.sidebar.success("🎉 ¡Pedido guardado exitosamente!")
-            st.balloons() # Animación corregida en plural
-            st.toast(f"Referencia de control generada: {id_pedido_referencia}")
-            # Limpia los datos de pantalla de inmediato refrescando el formulario a ceros
+            st.balloons() # Animación en plural
+            
+            # Construcción e inyección automática del PDF en memoria
+            pdf_data = generar_pdf_pedidos(id_pedido_referencia, fecha_actual, nombre_tienda_activo, lista_pdf_items)
+            st.session_state["pdf_listo"] = pdf_data
+            st.session_state["ref_pdf"] = id_pedido_referencia
+            
+            # Limpia los datos de la interfaz refrescando los campos no enviados a ceros
             st.rerun()
         else:
             st.sidebar.error("Error al procesar el almacenamiento en Google Sheets.")
 else:
-    st.sidebar.caption("Modifica cantidades en el catálogo para procesar un pedido.")
+    if not st.session_state["codigos_enviados"]:
+        st.sidebar.caption("Modifica cantidades en el catálogo para procesar un pedido.")
+
+# Renderizado automático del botón de descarga del PDF si ya se generó el lote
+if st.session_state["pdf_listo"] is not None:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📄 Documentación Generada")
+    st.sidebar.info(f"Ref: {st.session_state['ref_pdf']}")
+    
+    st.sidebar.download_button(
+        label="📥 Descargar Reporte PDF",
+        data=st.session_state["pdf_listo"],
+        file_name=f"Pedido_{st.session_state['ref_pdf']}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
