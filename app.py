@@ -70,20 +70,23 @@ tienda_seleccionada = st.sidebar.selectbox(
 codigo_tienda_activo = tienda_seleccionada.get('codigo_tienda', '')
 nombre_tienda_activo = tienda_seleccionada.get('tienda', '')
 
-# REQUERIMIENTO 2: Forzar cantidades a 0 en pantalla al cambiar de tienda o usuario
+# CONTROL DE RESETEO INTEGRAL Y CONTROL DE ACUMULADOS
 llave_limpieza = f"tienda_{usuario_activo}_{codigo_tienda_activo}"
 if "tienda_actual" not in st.session_state or st.session_state["tienda_actual"] != llave_limpieza:
     st.session_state["tienda_actual"] = llave_limpieza
-    st.session_state["codigos_enviados"] = []  # Evita duplicados bloqueando reenvíos
-    st.session_state["pdf_listo"] = None       # Guarda el PDF de la sesión actual
-    st.session_state["ref_pdf"] = ""           # Guarda la referencia del PDF
-    # Borramos cualquier rastro numérico de sesiones anteriores para obligar al renderizado en 0
+    st.session_state["codigos_enviados"] = []    # Bloquea duplicados en Sheets
+    st.session_state["historial_pdf_items"] = [] # REQUERIMIENTO: Acumula todos los pedidos del día para el PDF
+    st.session_state["pdf_listo"] = None         # Almacenamiento del PDF generado
+    st.session_state["ref_pdf"] = ""            # Referencia del pedido
+    
+    # REQUERIMIENTO: Forzar cantidades a 0 de forma estricta al cambiar de tienda o usuario
     for key in list(st.session_state.keys()):
         if key.startswith("cant_"):
             del st.session_state[key]
 
 st.write(f"Sesión activa: **{usuario_activo}** | Tienda: **[{codigo_tienda_activo}] {nombre_tienda_activo}**")
 st.divider()
+
 
 # ==========================================
 # FUNCIÓN GENERADORA DEL REPORTE PDF (Arial/Helvetica 10 - 2 Columnas)
