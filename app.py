@@ -205,34 +205,33 @@ st.subheader("Catálogo de Productos")
 carrito_solicitudes = {}
 
 for prod in df_productos:
-    # Forzamos a que el código sea texto puro para que Streamlit no rompa la fila
-    cod_art = str(prod.get('codigo', '')).strip()
-    
     col1, col2, col3 = st.columns([1, 2, 1.5])
+    cod_art = str(prod['codigo']).strip()
     
     with col1:
-        id_foto = str(prod.get('id_imagen_drive', '')).strip()
+        # Recuperamos la lógica idéntica original que cargaba las fotos perfectamente
+        id_foto = str(prod['id_imagen_drive']).strip()
         
-        # Lógica original exacta que sí te funcionaba y mostraba las fotos
-        if id_foto and id_foto not in ["", "0", "0.0", "None", "Sin Foto"]:
-            url_directa_foto = f"https://googleusercontent.com{id_foto}"
+        if id_foto and id_foto != "None" and id_foto != "":
+            # El método práctico original que el navegador renderiza sin problemas
+            url_directa_foto = f"https://lh3.googleusercontent.com/d/{id_foto}"
             st.image(url_directa_foto, width=130)
         else:
             st.warning("Sin ID de foto")
             
     with col2:
-        st.markdown(f"### {prod.get('nombre', 'Producto Sin Nombre')}")
+        # Volvemos a la lectura nativa directa original de las variables de Excel
+        st.markdown(f"### {prod['nombre']}")
         st.caption(f"Código de Artículo: {cod_art}")
         
-        # MENSAJE DE ENVIADO: Bloquea si ya fue procesado en el lote del día
+        # Validación para avisar si el código ya fue guardado en el lote actual
         if cod_art in st.session_state["codigos_enviados"]:
             st.success("✅ Este artículo ya fue guardado en Google Sheets")
             
     with col3:
-        # Si ya se envió, deshabilitamos el campo para evitar duplicados
+        # Bloqueamos el input si el código ya se procesó para evitar dobles registros
         ya_enviado = cod_art in st.session_state["codigos_enviados"]
         
-        # El input arranca estrictamente en 0 y se limpia al cambiar de tienda/usuario
         cantidad = st.number_input(
             "Cantidad a pedir:", 
             min_value=0, 
@@ -240,16 +239,18 @@ for prod in df_productos:
             key=f"cant_{cod_art}",
             disabled=ya_enviado
         )
-        # Solo se guarda si el usuario ingresó una cantidad válida
+        
+        # Estructura limpia para el guardado y generación acumulada del PDF
         if cantidad > 0 and not ya_enviado:
             carrito_solicitudes[cod_art] = {
                 "codigo": cod_art,
-                "nombre": prod.get('nombre', 'Producto Sin Nombre'),
+                "nombre": prod['nombre'],
                 "cantidad": cantidad,
                 "id_drive": id_foto
             }
                 
     st.divider()
+
 
 
 # ==========================================
