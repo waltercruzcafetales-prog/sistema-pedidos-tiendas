@@ -239,8 +239,8 @@ for prod in df_productos:
             disabled=ya_enviado
         )
         
-        # Solo se indexa si tiene valor y no fue previamente guardado
-        if cantidad > 0 and not ya_enviado:
+                # Solo se indexa si tiene valor y no fue previamente guardado
+        if cantidad > 0:
             carrito_solicitudes[cod_art] = {
                 "codigo": cod_art,
                 "nombre": prod.get('nombre', 'Producto Sin Nombre'),
@@ -259,7 +259,7 @@ st.sidebar.subheader("Confirmación de Solicitud")
 if carrito_solicitudes:
     st.sidebar.write(f"Artículos seleccionados: **{len(carrito_solicitudes)}**")
     
-    # REQUERIMIENTO: Botón de envío global que genera una referencia simplificada por fecha para modificar/eliminar
+    # Botón de envío global que genera una referencia simplificada por fecha para modificar/eliminar
     if st.sidebar.button("🚀 Enviar Pedido Completo", use_container_width=True):
         ahora = datetime.now()
         fecha_actual = ahora.strftime("%Y-%m-%d %H:%M:%S")
@@ -285,7 +285,7 @@ if carrito_solicitudes:
                     # Marcamos como enviado el código para bloquear duplicados
                     st.session_state["codigos_enviados"].append(str(codigo_item))
                     
-                    # REQUERIMIENTO: Consolidamos el artículo en el historial acumulativo del PDF diario
+                    # Consolidamos el artículo en el historial acumulativo del PDF diario
                     existe_en_historial = False
                     for item_pdf in st.session_state["historial_pdf_items"]:
                         if item_pdf["codigo"] == info_item["codigo"]:
