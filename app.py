@@ -205,13 +205,15 @@ st.subheader("Catálogo de Productos")
 carrito_solicitudes = {}
 
 for prod in df_productos:
+    # Forzamos a que el código sea texto puro para que Streamlit no rompa la fila
+    cod_art = str(prod.get('codigo', '')).strip()
+    
     col1, col2, col3 = st.columns([1, 2, 1.5])
-    cod_art = prod.get('codigo', '')
     
     with col1:
         id_foto = str(prod.get('id_imagen_drive', '')).strip()
         
-        # MANTENIDO: Lógica idéntica de visualización que sí te cargó las fotos
+        # Lógica original exacta que sí te funcionaba y mostraba las fotos
         if id_foto and id_foto not in ["", "0", "0.0", "None", "Sin Foto"]:
             url_directa_foto = f"https://googleusercontent.com{id_foto}"
             st.image(url_directa_foto, width=130)
@@ -222,25 +224,24 @@ for prod in df_productos:
         st.markdown(f"### {prod.get('nombre', 'Producto Sin Nombre')}")
         st.caption(f"Código de Artículo: {cod_art}")
         
-        # MENSAJE DE ENVIADO: Bloquea visualmente si ya fue procesado en este lote
-        if str(cod_art) in st.session_state["codigos_enviados"]:
+        # MENSAJE DE ENVIADO: Bloquea si ya fue procesado en el lote del día
+        if cod_art in st.session_state["codigos_enviados"]:
             st.success("✅ Este artículo ya fue guardado en Google Sheets")
             
     with col3:
-        # Si ya se envió, deshabilitamos el campo para que no se pueda enviar 2 veces
-        ya_enviado = str(cod_art) in st.session_state["codigos_enviados"]
+        # Si ya se envió, deshabilitamos el campo para evitar duplicados
+        ya_enviado = cod_art in st.session_state["codigos_enviados"]
         
-        # El input arranca estrictamente en 0 y guarda la persistencia de forma segura
+        # El input arranca estrictamente en 0 y se limpia al cambiar de tienda/usuario
         cantidad = st.number_input(
-            "Cantidad a pedir:",
-            min_value=0,
-            step=1,
+            "Cantidad a pedir:", 
+            min_value=0, 
+            step=1, 
             key=f"cant_{cod_art}",
             disabled=ya_enviado
         )
-        
-                # Solo se indexa si tiene valor y no fue previamente guardado
-        if cantidad > 0:
+        # Solo se guarda si el usuario ingresó una cantidad válida
+        if cantidad > 0 and not ya_enviado:
             carrito_solicitudes[cod_art] = {
                 "codigo": cod_art,
                 "nombre": prod.get('nombre', 'Producto Sin Nombre'),
@@ -249,6 +250,7 @@ for prod in df_productos:
             }
                 
     st.divider()
+
 
 # ==========================================
 # PANEL DE ENVIÓ CENTRALIZADO CON NÚMERO DE PEDIDO ÚNICO
