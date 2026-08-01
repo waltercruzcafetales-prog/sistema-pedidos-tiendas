@@ -243,8 +243,8 @@ if carrito_solicitudes:
         ahora = datetime.now()
         fecha_actual = ahora.strftime("%Y-%m-%d %H:%M:%S")
         
-               # Estructura del ID único optimizada: solo AñoMesDía (sin hora)
-        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
+        # Estructura del ID único: PED-AñoMesDia-HoraMinutoSegundo-Tienda-Usuario
+        id_pedido_referencia = f"PED-{ahora.strftime('%Y%m%d-%H%M%S')}-{codigo_tienda_activo}-{usuario_activo.upper()}"
         
         exito_operacion = True
         lista_pdf_items = []
@@ -273,7 +273,7 @@ if carrito_solicitudes:
                 
         if exito_operacion and lista_pdf_items:
             st.sidebar.success("🎉 ¡Pedido guardado exitosamente!")
-            st.balloons() # Animación en plural
+            st.balloons() # Animación corregida en plural
             
             # Construcción e inyección automática del PDF en memoria
             pdf_data = generar_pdf_pedidos(id_pedido_referencia, fecha_actual, nombre_tienda_activo, lista_pdf_items)
