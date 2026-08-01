@@ -16,20 +16,23 @@ st.set_page_config(page_title="Sistema de Pedidos Pro", page_icon="🛍️", lay
 URL_WEB_APP = "https://script.google.com/macros/s/AKfycbyEuyPtExmCSmKF7NVdj9n2UWgoJQBOUyE0-2PQW9zSW3M1GN6puvTBdvRgtwO4r2bc/exec"
 
 # ==========================================
-# CARGA Y CONTROL DE CACHÉ DE DATOS
+# CARGA DE DATOS DESDE GOOGLE SHEETS (SIN CACHÉ AGRESIVA)
 # ==========================================
-@st.cache_data(ttl=10) 
 def cargar_datos_completos():
     try:
-        response = requests.get(f"{URL_WEB_APP}?action=leer_todo", timeout=10)
+        # Añadimos un parámetro de tiempo aleatorio al final de la URL para engañar al sistema y evitar datos viejos
+        timestamp_evitar_cache = int(datetime.now().timestamp())
+        response = requests.get(f"{URL_WEB_APP}?action=leer_todo&v={timestamp_evitar_cache}", timeout=10)
         return response.json()
     except Exception as e:
         st.error(f"Error al conectar con Google Sheets: {e}")
         return None
 
+# Llamada directa a los datos reales de Google
 datos_base = cargar_datos_completos()
 if datos_base is None:
     st.stop()
+
 
 # Extracción de datos purificados
 df_productos = datos_base.get("productos", [])
