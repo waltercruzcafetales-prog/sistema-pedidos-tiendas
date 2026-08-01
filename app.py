@@ -94,11 +94,10 @@ st.write(f"Sesión activa: **{usuario_activo}** | Tienda: **[{codigo_tienda_acti
 st.divider()
 
 # ==========================================
-# FUNCIÓN GENERADORA DEL REPORTE PDF (SOLUCIÓN DEFINITIVA DE IMÁGENES)
+# FUNCIÓN GENERADORA DEL REPORTE PDF (Arial/Helvetica 10 - 2 Columnas)
 # ==========================================
 def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     buffer = io.BytesIO()
-    # Margen de 0.5 pulgadas para aprovechar la hoja al máximo
     doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     story = []
     
@@ -114,14 +113,13 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         'CeldaPDF', fontName='Helvetica', fontSize=10, leading=11, alignment=TA_LEFT
     )
     
-    # Encabezado principal
+    # Título solicitado con nombre de tienda, fecha e id único simplificado
     story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
     story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
     
-    # Importamos el componente nativo de imágenes de ReportLab
     from reportlab.platypus import Image as RLImage
     
-    # Convertimos la lista plana de artículos seleccionados en pares para simular 2 columnas
+    # Conversión de lista a pares para 2 columnas (máximo 15 filas por columna = 30 productos por página)
     pares_productos = []
     for i in range(0, len(lista_items), 2):
         item_izq = lista_items[i]
@@ -132,36 +130,33 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     for izq, der in pares_productos:
         fila_bloque = []
         
-        # --- COLUMNA IZQUIERDA ---
+        # Columna de la Izquierda
         id_foto_izq = str(izq.get('id_drive', '')).strip()
         texto_izq = f"<b>Código:</b> {izq['codigo']}<br/><b>Nombre:</b> {izq['nombre']}<br/><b>Cant:</b> {izq['cantidad']}"
         p_texto_izq = Paragraph(texto_izq, estilo_celda)
         
-        p_img_izq = Paragraph("■ Sin<br/>foto", estilo_celda)
+        p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
         if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
             try:
-                # Descargamos los bytes de la foto usando requests (el mismo método que la web)
-                url_izq = f"https://googleusercontent.com{id_foto_izq}"
-                res_izq = requests.get(url_izq, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-                if res_izq.status_code == 200:
-                    p_img_izq = RLImage(io.BytesIO(res_izq.content), width=40, height=40)
+                img_res = requests.get(f"https://googleusercontent.com{id_foto_izq}", timeout=5)
+                if img_res.status_code == 200:
+                    p_img_izq = RLImage(io.BytesIO(img_res.content), width=40, height=40)
             except Exception:
                 pass
         fila_bloque.extend([p_img_izq, p_texto_izq])
         
-        # --- COLUMNA DERECHA ---
+        # Columna de la Derecha
         if der:
             id_foto_der = str(der.get('id_drive', '')).strip()
             texto_der = f"<b>Código:</b> {der['codigo']}<br/><b>Nombre:</b> {der['nombre']}<br/><b>Cant:</b> {der['cantidad']}"
             p_texto_der = Paragraph(texto_der, estilo_celda)
             
-            p_img_der = Paragraph("■ Sin<br/>foto", estilo_celda)
+            p_img_der = Paragraph("❌ Sin foto", estilo_celda)
             if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
                 try:
-                    url_der = f"https://googleusercontent.com{id_foto_der}"
-                    res_der = requests.get(url_der, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
-                    if res_der.status_code == 200:
-                        p_img_der = RLImage(io.BytesIO(res_der.content), width=40, height=40)
+                    img_res = requests.get(f"https://googleusercontent.com{id_foto_der}", timeout=5)
+                    if img_res.status_code == 200:
+                        p_img_der = RLImage(io.BytesIO(img_res.content), width=40, height=40)
                 except Exception:
                     pass
             fila_bloque.extend([p_img_der, p_texto_der])
@@ -182,7 +177,7 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     ]))
     story.append(tabla_catalogo)
     
-    # Bloque de Firma de Recepción
+    # Bloque Solicitado de Firma de Recepción
     story.append(Spacer(1, 40))
     estilo_firma = ParagraphStyle('FirmaPDF', fontName='Helvetica', fontSize=10, alignment=TA_CENTER)
     datos_firma = [
@@ -200,7 +195,6 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 # ==========================================
 # DESPLIEGUE DEL CATÁLOGO DE PRODUCTOS
