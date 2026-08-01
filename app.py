@@ -84,7 +84,7 @@ st.write(f"Sesión activa: **{usuario_active}** | Tienda: **[{codigo_tienda_acti
 st.divider()
 
 # ==========================================
-# FUNCIÓN GENERADORA DEL REPORTE PDF (Arial/Helvetica 10 - 2 Columnas)
+# FUNCIÓN GENERADORA DEL REPORTE PDF CORREGIDA
 # ==========================================
 def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     buffer = io.BytesIO()
@@ -124,6 +124,9 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     story.append(Paragraph(f"<b>REPORTE DE SOLICITUD DE PEDIDO</b>", estilo_titulo))
     story.append(Paragraph(f"<b>Tienda:</b> {tienda_nombre} &nbsp;|&nbsp; <b>Fecha:</b> {fecha} &nbsp;|&nbsp; <b>ID Único:</b> {referencia}", estilo_meta))
     
+    # Importamos el componente nativo de imágenes de ReportLab de forma local
+    from reportlab.platypus import Image as RLImage
+    
     # Convertimos la lista plana de artículos seleccionados en pares para simular 2 columnas
     pares_productos = []
     for i in range(0, len(lista_items), 2):
@@ -136,38 +139,48 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
     for izq, der in pares_productos:
         fila_bloque = []
         
-        # Columna Izquierda
+        # --- COLUMNA IZQUIERDA ---
         id_foto_izq = str(izq.get('id_drive', '')).strip()
-        img_url_izq = f"https://googleusercontent.com{id_foto_izq}" if id_foto_izq else ""
         texto_izq = f"<b>Código:</b> {izq['codigo']}<br/><b>Nombre:</b> {izq['nombre']}<br/><b>Cant:</b> {izq['cantidad']}"
         p_texto_izq = Paragraph(texto_izq, estilo_celda)
         
+        # Descarga e inserción segura de la imagen izquierda
+        p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
         if id_foto_izq and id_foto_izq not in ["", "0", "0.0", "None", "Sin Foto"]:
-            p_img_izq = Paragraph(f'<img src="{img_url_izq}" width="40" height="40"/>', estilo_celda)
-        else:
-            p_img_izq = Paragraph("❌ Sin foto", estilo_celda)
-            
+            try:
+                img_res = requests.get(f"https://googleusercontent.com{id_foto_izq}", timeout=5)
+                if img_res.status_code == 200:
+                    img_data = io.BytesIO(img_res.content)
+                    p_img_izq = RLImage(img_data, width=40, height=40)
+            except Exception:
+                pass
+                
         fila_bloque.extend([p_img_izq, p_texto_izq])
         
-        # Columna Derecha
+        # --- COLUMNA DERECHA ---
         if der:
             id_foto_der = str(der.get('id_drive', '')).strip()
-            img_url_der = f"https://googleusercontent.com{id_foto_der}" if id_foto_der else ""
             texto_der = f"<b>Código:</b> {der['codigo']}<br/><b>Nombre:</b> {der['nombre']}<br/><b>Cant:</b> {der['cantidad']}"
             p_texto_der = Paragraph(texto_der, estilo_celda)
             
+            # Descarga e inserción segura de la imagen derecha
+            p_img_der = Paragraph("❌ Sin foto", estilo_celda)
             if id_foto_der and id_foto_der not in ["", "0", "0.0", "None", "Sin Foto"]:
-                p_img_der = Paragraph(f'<img src="{img_url_der}" width="40" height="40"/>', estilo_celda)
-            else:
-                p_img_der = Paragraph("❌ Sin foto", estilo_celda)
-                
+                try:
+                    img_res = requests.get(f"https://googleusercontent.com{id_foto_der}", timeout=5)
+                    if img_res.status_code == 200:
+                        img_data = io.BytesIO(img_res.content)
+                        p_img_der = RLImage(img_data, width=40, height=40)
+                except Exception:
+                    pass
+                    
             fila_bloque.extend([p_img_der, p_texto_der])
         else:
             fila_bloque.extend(["", ""])
             
         tabla_datos.append(fila_bloque)
         
-    # Anchos fijos de columnas: [FotoIzq, InfoIzq, FotoDer, InfoDer] -> 540 puntos totales utilizables
+    # Anchos fijos de columnas arreglados: [FotoIzq, InfoIzq, FotoDer, InfoDer] -> 540 puntos utilizables
     anchos_columnas = [50, 220, 50, 220]
     
     tabla_catalogo = Table(tabla_datos, colWidths=anchos_columnas)
@@ -188,7 +201,9 @@ def generar_pdf_pedidos(referencia, fecha, tienda_nombre, lista_items):
         [Paragraph("_____________________________<br/>Firma de Despacho", estilo_firma), 
          Paragraph("_____________________________<br/>Firma de Recepción", estilo_firma)]
     ]
-    tabla_firma = Table(datos_firma, colWidths=[270, 270])
+    # Anchos fijos de columnas para las firmas arreglados: 270 puntos por firma
+    anchos_firmas = [270, 270]
+    tabla_firma = Table(datos_firma, colWidths=anchos_firmas)
     tabla_firma.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER')
